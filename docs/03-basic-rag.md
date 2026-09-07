@@ -95,3 +95,127 @@ docker exec customer-compass-ollama ollama pull mxbai-embed-large
 curl -X POST http://localhost:3001/api/documents/ingest
 ```
 
+## Local testing
+
+Full walkthrough to bring the stage up from a clean checkout and verify it
+works.
+
+### 1. Start infrastructure
+
+```bash
+cd /home/devarapallim/Murali/git-personal/customer-compass
+docker-compose up -d db ollama
+```
+
+- **First time / fresh volume**: `db/init.sql` and `db/002-rag.sql` both run
+  automatically (mounted as ordered init scripts).
+- **Existing volume from before Stage 3** (already had `companies`,
+  `contacts`, `deals`, `interactions`): the container image changes to
+  `pgvector/pgvector:pg17`, but Postgres init scripts only run once against an
+  empty data directory, so apply the new schema manually:
+
+  ```bash
+  docker exec -i customer-compass-db psql -U customer_compass -d customer_compass < db/002-rag.sql
+  ```
+
+  Verify it worked: `\dt` inside `psql` should list `documents`,
+  `document_chunks`, and `ingestion_runs` alongside the Stage 1 tables.
+
+### 2. Pull the models
+
+```bash
+docker exec customer-compass-ollama ollama pull qwen2.5:3b        # Stage 2 chat model
+docker exec customer-compass-ollama ollama pull mxbai-embed-large # Stage 3 embedding model
+docker exec customer-compass-ollama ollama list                   # confirm both are present
+```
+
+### 3. Install dependencies and start the app
+
+```bash
+npm install
+npm run dev
+```
+
+This runs the API (`http://localhost:3001`) and the web UI
+(`http://localhost:5173`) together. Confirm the API is healthy:
+
+```bash
+curl -s http://localhost:3001/health
+# expect: {"status":"ok"}
+```
+
+### 4. Run automated tests
+
+```bash
+cd apps/api && npm test
+```
+
+Expect **6 passing tests**: 2 route-level tests in `app.test.ts` (including
+the chat validation test — previously silently skipped before the glob fix)
+and 4 chunking unit tests in `chunking.test.ts`.
+
+Also confirm both apps type-check and build cleanly:
+
+```bash
+cd apps/api && npx tsc -p tsconfig.json --noEmit && npm run build
+cd ../web && npx tsc -p tsconfig.app.json --noEmit && npm run build
+```
+
+### 5. Ingest the sample documents
+
+```bash
+curl -s -X POST http://localhost:3001/api/documents/ingest | python3 -m json.tool
+```
+
+Observe: `"status": "completed"`, `"documentsProcessed": 8`,
+`"chunksCreated": 16`. Then inspect what was stored:
+
+```bash
+curl -s http://localhost:3001/api/documents | python3 -m json.tool
+```
+
+Observe: 8 documents, each with `chunk_count: 2`, and `company_name` set for
+the 6 company-specific documents (`null` for the 2 product overviews).
+
+### 6. Ask a grounded question
+
+```bash
+curl -s -X POST http://localhost:3001/api/chat/rag \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Does the Fleet Visibility package include alerting, and can alerts be set per customer?"}]}' \
+  | python3 -m json.tool
+```
+
+Observe:
+- `message` answers the question and includes bracketed citation markers
+  like `[1]`, `[2]`.
+- `citations` is a non-empty array; each entry's `title`/`snippet` should
+  plausibly support the claim in `message` (for this question, expect the
+  "Fleet Visibility rollout package overview" and "Pre-sales support
+  conversation on alerting limits" documents to appear with high
+  `similarity`, roughly 0.7–0.85).
+
+Also confirm Stage 2's ungrounded chat still works unaffected:
+
+```bash
+curl -s -X POST http://localhost:3001/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Say hi in 5 words."}]}'
+```
+
+Observe: a `message` field with no `citations` key.
+
+### 7. Verify in the browser
+
+Open `http://localhost:5173`:
+
+- The chat panel shows an "Ingest documents" button and a "Use document
+  knowledge (RAG)" checkbox.
+- Click "Ingest documents" and observe the status line report documents and
+  chunks ingested (matches step 5).
+- With the RAG checkbox **unchecked**, ask a general question — answered with
+  no citations shown.
+- With the RAG checkbox **checked**, ask the Fleet Visibility question from
+  step 6 — the assistant's reply should appear with a numbered citations list
+  underneath it (title, company, doc type, similarity score).
+
