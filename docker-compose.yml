@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     container_name: customer-compass-db
     environment:
       POSTGRES_DB: customer_compass
@@ -11,6 +11,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+      - ./db/002-rag.sql:/docker-entrypoint-initdb.d/002-rag.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U customer_compass -d customer_compass"]
       interval: 5s

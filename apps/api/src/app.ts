@@ -1,17 +1,15 @@
 import cors from "cors";
 import express from "express";
 import { pool } from "./db.js";
+import { chatRouter } from "./routes/chat.js";
+import { documentsRouter } from "./routes/documents.js";
 
 export const app = express();
 app.use(cors({ origin: "http://localhost:5173" }));
 app.use(express.json());
 
-type ChatMessage = { role: "user" | "assistant"; content: string };
-const systemPrompt = `You are Compass, a helpful assistant inside a CRM learning application.
-You do not have access to any CRM customer data yet. Be transparent about that.
-Give concise, useful answers and never invent facts, access, or actions.`;
-const ollamaUrl = process.env.OLLAMA_URL ?? "http://localhost:11435";
-const ollamaModel = process.env.OLLAMA_MODEL ?? "qwen2.5:3b";
+app.use("/api/chat", chatRouter);
+app.use("/api/documents", documentsRouter);
 
 app.get("/health", async (_request, response) => {
   await pool.query("SELECT 1");
@@ -58,39 +56,4 @@ app.get("/api/companies/:id", async (request, response) => {
     deals: deals.rows,
     interactions: interactions.rows,
   });
-});
-
-app.post("/api/chat", async (request, response) => {
-  const messages = request.body?.messages;
-  if (!Array.isArray(messages) || messages.length === 0 || messages.length > 12) {
-    return response.status(400).json({ error: "Send between 1 and 12 chat messages." });
-  }
-  if (!messages.every((message): message is ChatMessage =>
-    (message?.role === "user" || message?.role === "assistant") &&
-    typeof message.content === "string" && message.content.trim().length > 0 && message.content.length <= 4_000,
-  )) {
-    return response.status(400).json({ error: "Each message needs a user/assistant role and non-empty text up to 4,000 characters." });
-  }
-
-  try {
-    const ollamaResponse = await fetch(`${ollamaUrl}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: ollamaModel,
-        stream: false,
-        messages: [{ role: "system", content: systemPrompt }, ...messages],
-        options: { temperature: 0.3, num_predict: 350 },
-      }),
-    });
-    if (!ollamaResponse.ok) {
-      console.error("Ollama request failed", await ollamaResponse.text());
-      return response.status(502).json({ error: "The local model is not ready. Start Ollama and pull the configured model." });
-    }
-    const payload = await ollamaResponse.json() as { message?: { content?: string } };
-    return response.json({ message: payload.message?.content ?? "I could not generate a response." });
-  } catch (error) {
-    console.error("Could not reach Ollama", error);
-    return response.status(503).json({ error: "Could not reach Ollama at the local model service." });
-  }
 });
