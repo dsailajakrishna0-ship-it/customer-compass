@@ -219,3 +219,35 @@ Open `http://localhost:5173`:
   step 6 — the assistant's reply should appear with a numbered citations list
   underneath it (title, company, doc type, similarity score).
 
+## Inspecting the database with a visual tool
+
+The CRM tables (`companies`, `contacts`, `deals`, `interactions`) and the RAG
+tables (`documents`, `document_chunks`, `ingestion_runs`) all live in the
+**same** `customer_compass` Postgres database (started via `docker-compose
+up`) — there are not two separate databases to connect to.
+
+Any Postgres client works (DBeaver, TablePlus, Adminer, `psql`). Connection
+details:
+
+| Field | Value |
+| --- | --- |
+| Host | `localhost` |
+| Port | `5432` |
+| Database | `customer_compass` |
+| Username | `customer_compass` |
+| Password | `customer_compass_dev` |
+| SSL | disabled (local dev only) |
+
+Quick CLI alternative:
+
+```bash
+docker exec -it customer-compass-db psql -U customer_compass -d customer_compass
+```
+
+```sql
+\dt                          -- list all tables (CRM + RAG together)
+SELECT * FROM documents;
+SELECT id, document_id, chunk_index, left(content, 50) FROM document_chunks LIMIT 5;
+SELECT * FROM ingestion_runs ORDER BY id DESC LIMIT 5;
+```
+
