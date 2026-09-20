@@ -57,6 +57,12 @@ does not reproduce an existing CRM product.
 See [conversation-progress.md](conversation-progress.md) for a concise running
 record of decisions, completed work, environment setup, and the next stage.
 
+See [tech-stack.md](tech-stack.md) for a cross-cutting reference of the
+active technology per capability (LLM inference, embeddings, vector storage,
+tool calling, guardrails, evaluation), what alternatives are already wired in
+as opt-in toggles, and other free options worth exploring — updated as new
+stages introduce new choices.
+
 ## Archive
 
 [`archive-01/`](archive-01/) contains a frozen snapshot of the original flat
