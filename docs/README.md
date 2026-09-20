@@ -25,6 +25,9 @@ before the next stage changes its assumptions.
 This is an intentionally small, original CRM. It uses only synthetic data and
 does not reproduce an existing CRM product.
 
+See [conversation-progress.md](conversation-progress.md) for a concise running
+record of decisions, completed work, environment setup, and the next stage.
+
 ## Developer note
 
 This documentation increment adds `docs/README.md` and the eight numbered stage
