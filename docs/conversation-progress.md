@@ -112,11 +112,30 @@ curl -X POST http://localhost:3001/api/documents/ingest
 - Verify with `codex mcp list` and `codex mcp get git-local`.
 - A new Codex session is needed before the new MCP server can appear as tools.
 
+## Documentation restructured into Parts
+
+- Original flat numbering (Stages 1–8) archived unchanged at `docs/archive-01/`.
+- Roadmap reorganized into 4 Parts (extensible — more can be appended later):
+  - **Part I — Foundations**: Stages 1–3 (unchanged, all complete).
+  - **Part II — Grounded Intelligence**: Stage 4 (new — cloud LLM provider
+    option), Stage 5 (was Stage 4 — realistic CRM RAG), Stage 6 (was Stage 5 —
+    retrieval evaluation, enriched with an LLM-as-judge scorer).
+  - **Part III — Trust & Safety**: Stage 7 (was Stage 6 — production
+    concerns), Stage 8 (new — prompt-injection defense & guardrails).
+  - **Part IV — Autonomy & Protocols**: Stage 9 (was Stage 7 — tool calling,
+    upgraded to use MCP instead of a bespoke tool-schema format), Stage 10
+    (was Stage 8 — agentic assistant).
+- Every stage document now has explicit **How to run the app** and **How to
+  test manually** sections (manual, black-box verification steps — separate
+  from and in addition to the existing automated test suite).
+- New `docs/README.md` indexes stages by Part; old `docs/README.md` moved into
+  the archive folder.
+
 ## Next step
 
-Stage 4: connect RAG with the CRM database — DB-only, RAG-only, and
-DB+RAG questions, metadata filtering, customer-specific retrieval,
-conversation history, and query rewriting.
+Stage 4 (Part II): add a free-tier cloud LLM provider (Groq/OpenRouter/Gemini)
+as a swappable alternative to local Ollama, behind a shared provider
+abstraction, with no change to existing default (Ollama) behavior.
 
 ## Developer note
 
