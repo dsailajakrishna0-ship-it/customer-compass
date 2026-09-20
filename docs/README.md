@@ -4,16 +4,43 @@ This folder is the durable engineering record for the learning project. Read the
 stage documents in order; each stage has a working boundary and must be verified
 before the next stage changes its assumptions.
 
+Stages are grouped into **Parts** so the roadmap stays navigable as new topics
+are added. Each part is its own folder; new parts can be appended later without
+disrupting earlier ones.
+
+## Part I — Foundations
+*Get a working CRM + basic AI loop running locally.*
+
 | Stage | Status | Document |
 | --- | --- | --- |
-| 1. CRM foundation | Complete | [01-foundation.md](01-foundation.md) |
-| 2. Local LLM chat | Complete | [02-first-llm-chat.md](02-first-llm-chat.md) |
-| 3. Basic RAG | Planned | [03-basic-rag.md](03-basic-rag.md) |
-| 4. CRM RAG | Planned | [04-realistic-crm-rag.md](04-realistic-crm-rag.md) |
-| 5. Retrieval evaluation | Planned | [05-retrieval-evaluation.md](05-retrieval-evaluation.md) |
-| 6. Production concerns | Planned | [06-production-concerns.md](06-production-concerns.md) |
-| 7. Tool calling | Planned | [07-tool-calling.md](07-tool-calling.md) |
-| 8. Agentic assistant | Planned | [08-agentic-assistant.md](08-agentic-assistant.md) |
+| 1. CRM foundation | Complete | [01-foundation.md](part-1-foundations/01-foundation.md) |
+| 2. First local LLM chat | Complete | [02-first-llm-chat.md](part-1-foundations/02-first-llm-chat.md) |
+| 3. Basic RAG | Complete | [03-basic-rag.md](part-1-foundations/03-basic-rag.md) |
+
+## Part II — Grounded Intelligence
+*Make answers accurate, realistic, and provider-flexible.*
+
+| Stage | Status | Document |
+| --- | --- | --- |
+| 4. Cloud LLM provider option | Planned | [04-cloud-llm-provider.md](part-2-grounded-intelligence/04-cloud-llm-provider.md) |
+| 5. Realistic CRM RAG | Planned | [05-realistic-crm-rag.md](part-2-grounded-intelligence/05-realistic-crm-rag.md) |
+| 6. Retrieval evaluation | Planned | [06-retrieval-evaluation.md](part-2-grounded-intelligence/06-retrieval-evaluation.md) |
+
+## Part III — Trust & Safety
+*Make it credible and safe before adding autonomy.*
+
+| Stage | Status | Document |
+| --- | --- | --- |
+| 7. Production concerns | Planned | [07-production-concerns.md](part-3-trust-safety/07-production-concerns.md) |
+| 8. Prompt-injection defense & guardrails | Planned | [08-prompt-injection-guardrails.md](part-3-trust-safety/08-prompt-injection-guardrails.md) |
+
+## Part IV — Autonomy & Protocols
+*Let the assistant act, using modern standards.*
+
+| Stage | Status | Document |
+| --- | --- | --- |
+| 9. Tool calling via MCP | Planned | [09-tool-calling-mcp.md](part-4-autonomy-protocols/09-tool-calling-mcp.md) |
+| 10. Agentic CRM assistant | Planned | [10-agentic-assistant.md](part-4-autonomy-protocols/10-agentic-assistant.md) |
 
 ## Baseline stack
 
@@ -21,6 +48,8 @@ before the next stage changes its assumptions.
 - Backend: Express + TypeScript
 - Relational data: PostgreSQL 17 in Docker
 - Local inference: Ollama + Qwen2.5 3B in Docker
+- Cloud inference (Stage 4+): one free-tier provider (Groq/OpenRouter/Gemini),
+  swappable via configuration
 
 This is an intentionally small, original CRM. It uses only synthetic data and
 does not reproduce an existing CRM product.
@@ -28,8 +57,15 @@ does not reproduce an existing CRM product.
 See [conversation-progress.md](conversation-progress.md) for a concise running
 record of decisions, completed work, environment setup, and the next stage.
 
+## Archive
+
+[`archive-01/`](archive-01/) contains a frozen snapshot of the original flat
+8-stage numbering, kept for history. It is not maintained going forward — use
+the Part-based index above.
+
 ## Developer note
 
-This documentation increment adds `docs/README.md` and the eight numbered stage
-documents. Keep this index updated whenever a stage changes from Planned to
-Complete or its implementation scope changes.
+Keep this index updated whenever a stage changes from Planned to Complete, its
+implementation scope changes, or a new stage/part is added. Every stage document
+includes a **How to run the app** and **How to test manually** section — the
+manual steps are independent of (and in addition to) any automated test suite.
