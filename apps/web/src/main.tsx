@@ -8,6 +8,9 @@ type Citation = { number: number; documentId: number; title: string; sourcePath:
 type ChatMessage = { role: "user" | "assistant"; content: string; citations?: Citation[]; provider?: LlmProvider };
 type LlmProvider = "ollama" | "cloud";
 
+type ModelOption = { id: string; name: string };
+type ModelCatalog = { free: ModelOption[]; paid: ModelOption[] };
+
 const api = "http://localhost:3001";
 
 function App() {
@@ -19,10 +22,20 @@ function App() {
   const [isAsking, setIsAsking] = useState(false);
   const [useRag, setUseRag] = useState(false);
   const [provider, setProvider] = useState<LlmProvider>("ollama");
+  const [cloudModels, setCloudModels] = useState<ModelCatalog>({ free: [], paid: [] });
+  const [cloudModel, setCloudModel] = useState<string>("");
   const [ingestStatus, setIngestStatus] = useState<string | null>(null);
   const [isIngesting, setIsIngesting] = useState(false);
 
   useEffect(() => { void loadCompanies(); }, []);
+  useEffect(() => { void loadCloudModels(); }, []);
+  async function loadCloudModels() {
+    try {
+      const catalog = await (await fetch(`${api}/api/llm/models`)).json() as ModelCatalog;
+      setCloudModels(catalog);
+      if (catalog.free.length > 0) setCloudModel(current => current || catalog.free[0].id);
+    } catch { /* Cloud model list is optional; the "cloud" provider still works with the server's default model. */ }
+  }
   async function loadCompanies() {
     try { setCompanies(await (await fetch(`${api}/api/companies`)).json()); }
     catch { setError("Could not reach the API. Start PostgreSQL and the API, then refresh."); }
@@ -49,7 +62,9 @@ function App() {
     setMessages(history); setQuestion(""); setIsAsking(true);
     try {
       const endpoint = useRag ? "/api/chat/rag" : "/api/chat";
-      const response = await fetch(`${api}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: history.slice(-12), provider }) });
+      const body: { messages: ChatMessage[]; provider: LlmProvider; model?: string } = { messages: history.slice(-12), provider };
+      if (provider === "cloud" && cloudModel) body.model = cloudModel;
+      const response = await fetch(`${api}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const body = await response.json() as { message?: string; error?: string; citations?: Citation[]; provider?: LlmProvider };
       setMessages(current => [...current, { role: "assistant", content: body.message ?? body.error ?? "Something went wrong.", citations: body.citations, provider: body.provider }]);
     } catch { setMessages(current => [...current, { role: "assistant", content: "I could not reach the API. Check that the local services are running." }]); }
@@ -78,6 +93,21 @@ function App() {
               <option value="cloud">Cloud (OpenRouter, free tier)</option>
             </select>
           </label>
+          {provider === "cloud" && (
+            <label className="provider-select">
+              OpenRouter model:
+              <select value={cloudModel} onChange={event => setCloudModel(event.target.value)}>
+                <optgroup label="Free">
+                  {cloudModels.free.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </optgroup>
+                {cloudModels.paid.length > 0 && (
+                  <optgroup label="Paid (not selectable in this learning app)">
+                    {cloudModels.paid.map(m => <option key={m.id} value={m.id} disabled className="paid-option">{m.name}</option>)}
+                  </optgroup>
+                )}
+              </select>
+            </label>
+          )}
         </div>
         {ingestStatus && <p className="ingest-status">{ingestStatus}</p>}
       </div>

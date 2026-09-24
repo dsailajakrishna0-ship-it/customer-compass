@@ -34,15 +34,21 @@ function resolveProvider(provider: unknown): LlmProvider | undefined {
   return undefined;
 }
 
+/** Optional per-request OpenRouter model override from the UI's "OpenRouter model" dropdown. */
+function resolveModel(model: unknown): string | undefined {
+  return typeof model === "string" && model.trim().length > 0 ? model : undefined;
+}
+
 /** General-purpose chat, no CRM/document grounding (Stage 2 behavior). */
 chatRouter.post("/", async (request, response) => {
-  const { messages, provider } = request.body ?? {};
+  const { messages, provider, model } = request.body ?? {};
   if (!validateMessages(messages)) {
     return response.status(400).json({ error: "Send between 1 and 12 chat messages." });
   }
   const resolvedProvider = resolveProvider(provider) ?? DEFAULT_LLM_PROVIDER;
+  const resolvedModel = resolveModel(model);
   try {
-    const message = await generate(generalSystemPrompt, messages, resolvedProvider);
+    const message = await generate(generalSystemPrompt, messages, resolvedProvider, resolvedModel);
     return response.json({ message, provider: resolvedProvider });
   } catch (error) {
     console.error(`Could not reach the "${resolvedProvider}" LLM provider`, error);
@@ -52,11 +58,12 @@ chatRouter.post("/", async (request, response) => {
 
 /** Retrieval-augmented chat: retrieves cited chunks and grounds the answer in them. */
 chatRouter.post("/rag", async (request, response) => {
-  const { messages, provider } = request.body ?? {};
+  const { messages, provider, model } = request.body ?? {};
   if (!validateMessages(messages)) {
     return response.status(400).json({ error: "Send between 1 and 12 chat messages." });
   }
   const resolvedProvider = resolveProvider(provider) ?? DEFAULT_LLM_PROVIDER;
+  const resolvedModel = resolveModel(model);
 
   const question = messages[messages.length - 1].content;
 
@@ -76,7 +83,7 @@ chatRouter.post("/rag", async (request, response) => {
       { role: "user", content: `Context:\n${context}\n\nQuestion: ${question}` },
     ];
 
-    const message = await generate(groundedSystemPrompt, augmentedMessages, resolvedProvider);
+    const message = await generate(groundedSystemPrompt, augmentedMessages, resolvedProvider, resolvedModel);
     const citations = chunks.map((chunk, i) => ({
       number: i + 1,
       documentId: chunk.documentId,
