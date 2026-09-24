@@ -3,6 +3,7 @@ import express from "express";
 import { pool } from "./db.js";
 import { chatRouter } from "./routes/chat.js";
 import { documentsRouter } from "./routes/documents.js";
+import { llmRouter } from "./routes/llm.js";
 
 export const app = express();
 app.use(cors({ origin: "http://localhost:5173" }));
@@ -10,6 +11,7 @@ app.use(express.json());
 
 app.use("/api/chat", chatRouter);
 app.use("/api/documents", documentsRouter);
+app.use("/api/llm", llmRouter);
 
 app.get("/health", async (_request, response) => {
   await pool.query("SELECT 1");

@@ -1,11 +1,18 @@
 # Tech stack and alternatives
 
 This is a living, cross-cutting reference of the technology used in Customer
-Compass — organized by **capability** (LLM inference, embeddings, vector
-storage, tool calling, etc.) rather than by stage. It exists so a learner can
-see, at a glance, what is currently active, what swappable alternative is
-already wired in (or planned), and what other free options are worth exploring
-next.
+Compass. It's organized two ways:
+
+1. **[Progress by stage](#progress-by-stage)** — a color-coded, chronological
+   walkthrough of what each stage added, best for seeing the stack build up
+   incrementally as a learner.
+2. **By capability** (LLM inference, embeddings, vector storage, tool
+   calling, etc.) — the detailed reference further down, best for looking up
+   what's active/swappable for one specific technology area.
+
+Either way, this file exists so a learner can see, at a glance, what is
+currently active, what swappable alternative is already wired in (or
+planned), and what other free options are worth exploring next.
 
 **Update this file whenever a new stage introduces a new technology choice or
 a new swappable alternative.** Individual stage documents describe the
@@ -24,18 +31,91 @@ this project's standing strategy). Two mechanisms are used:
    definition exists in `docker-compose.yml` but is commented out by default.
    Uncomment it, set the matching environment variable, and restart to try it;
    comment it back out to return to the default with no other changes.
+3. **Live UI selector, per request** (LLM provider and, for the cloud
+   provider, the specific model) — the web app lets the user pick the
+   provider from a dropdown on every message, no restart needed; when
+   "Cloud" is selected, a second dropdown lets them pick any currently
+   available free OpenRouter model (fetched live from `GET /api/llm/models`),
+   with paid examples shown disabled for reference only. The server still
+   supports env-var defaults (`LLM_PROVIDER`, `OPENROUTER_MODEL`) for clients
+   that don't specify one (e.g. curl/tests).
+
+## Progress by stage
+
+A chronological, color-coded view of what each stage added — read top to
+bottom to see the stack build up incrementally. Completed stages get a
+distinct color per stage; planned/not-yet-built stages are grey. The
+per-capability tables further below are the detailed reference for the same
+information, organized the other way (by technology, not by stage).
+
+![Stage 1](https://img.shields.io/badge/Stage_1-CRM_Foundation-6f42c1) **— done**
+- **PostgreSQL 17** (Docker) — relational store for companies, contacts,
+  deals, interactions. No LLM/AI yet.
+
+![Stage 2](https://img.shields.io/badge/Stage_2-First_LLM_Chat-0969da) **— done**
+- **Ollama** (local, Docker) running **`qwen2.5:3b`** — the first chat/
+  completion model, called from `/api/chat`. No CRM data access yet.
+
+![Stage 3](https://img.shields.io/badge/Stage_3-Basic_RAG-1a7f37) **— done**
+- **Ollama embeddings**, `mxbai-embed-large` (1024-dim) — turns ingested CRM
+  documents into vectors.
+- **PostgreSQL + `pgvector`** — added to the *same* database as the CRM
+  tables, storing and searching those embeddings. `/api/chat/rag` grounds
+  answers in retrieved, cited chunks.
+
+![Stage 4](https://img.shields.io/badge/Stage_4-Cloud_LLM_Provider-e36209) **— done**
+- **OpenRouter** (cloud, free tier) — a swappable alternative to Ollama for
+  chat/completion, wired in additively (Ollama still works unchanged).
+  Selectable **live, per request** from the web UI: a "Model" dropdown
+  (Local Ollama / Cloud OpenRouter), and — when Cloud is picked — a second
+  "OpenRouter model" dropdown listing all current free models (selectable)
+  plus a couple of paid examples (greyed out, reference only). Backed by
+  `GET /api/llm/models`.
+
+![Stage 5](https://img.shields.io/badge/Stage_5-Realistic_CRM_RAG-lightgrey) **— planned**
+- No new technology choice recorded yet; see
+  `docs/part-2-grounded-intelligence/05-realistic-crm-rag.md`.
+
+![Stage 6](https://img.shields.io/badge/Stage_6-Retrieval_Evaluation-lightgrey) **— planned**
+- Custom benchmark (`evals/questions.json`) + LLM-as-judge. Alternatives to
+  explore: RAGAS, DeepEval, promptfoo.
+
+![Stage 7](https://img.shields.io/badge/Stage_7-Production_Concerns-lightgrey) **— planned**
+- Model fallback between providers, cost/latency tracking — design not
+  finalized yet.
+
+![Stage 8](https://img.shields.io/badge/Stage_8-Prompt_Injection_Guardrails-lightgrey) **— planned**
+- Custom rule-based guard + delimited untrusted-content prompting.
+  Alternatives to explore: NeMo Guardrails, Llama Guard, Guardrails AI.
+
+![Stage 9](https://img.shields.io/badge/Stage_9-Tool_Calling_MCP-lightgrey) **— planned**
+- MCP (Model Context Protocol) — provider-agnostic tool calling, matching how
+  modern AI tools (including this CLI) expose tools today.
+
+![Stage 10](https://img.shields.io/badge/Stage_10-Agentic_Assistant-lightgrey) **— planned**
+- Not yet designed.
 
 ## LLM inference (chat/completion)
 
 | | Technology | Status |
 | --- | --- | --- |
 | **Active (default)** | Ollama, local, `qwen2.5:3b` | Stage 2 |
-| **Swappable alternative** | Free-tier cloud provider (Groq / OpenRouter / Gemini), via `LLM_PROVIDER=cloud` | Stage 4 (planned) |
+| **Swappable alternative** | OpenRouter (cloud, free tier), selectable live per request via the web UI's "Model" dropdown, or `provider: "cloud"` in the request body, or `LLM_PROVIDER=cloud` as the server-side default | Stage 4 |
+
+Current OpenRouter default free model: `liquid/lfm-2.5-2.6b:free`. Since
+free-tier slugs get promoted to paid-only or rate-limited under shared-pool
+contention frequently, the web UI additionally exposes a second **"OpenRouter
+model"** dropdown (visible when "Cloud" is selected) populated live from
+`GET /api/llm/models` — the user can pick any currently free model per
+message, no server restart or `.env` edit needed. A couple of well-known paid
+models (GPT-4o-mini, Claude Sonnet 4) are listed alongside for reference but
+rendered disabled/greyed out — never selectable, so no request can
+accidentally incur cost. See `apps/api/.env.example` for a curl one-liner to
+inspect the raw free-model list server-side if needed.
 
 Free options worth exploring later:
 
 - **Groq** — very low latency, OpenAI-compatible API, generous free tier.
-- **OpenRouter** — aggregates many free-tier models behind one API.
 - **Google Gemini (free tier)** — strong quality, own SDK shape.
 - **Together.ai** — free credits, OpenAI-compatible.
 
