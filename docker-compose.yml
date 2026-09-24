@@ -26,6 +26,27 @@ services:
     volumes:
       - ollama-data:/root/.ollama
 
+  # --- Alternative vector store (Qdrant) ---------------------------------
+  # Default vector storage is `pgvector` on the `db` service above (Stage 3).
+  # To try Qdrant as a swappable alternative instead (see docs/tech-stack.md):
+  #   1. Uncomment the `qdrant` service below.
+  #   2. Run `docker-compose up -d qdrant`.
+  #   3. Set `VECTOR_STORE=qdrant` when starting the API (`npm run dev`).
+  #   4. Comment it back out (and unset the env var) to return to pgvector —
+  #      no other changes needed, both stores can coexist since RAG data is
+  #      always re-ingested via `POST /api/documents/ingest`.
+  #
+  # qdrant:
+  #   image: qdrant/qdrant:latest
+  #   container_name: customer-compass-qdrant
+  #   ports:
+  #     - "6333:6333"   # REST API
+  #     - "6334:6334"   # gRPC API
+  #   volumes:
+  #     - qdrant-data:/qdrant/storage
+  # -------------------------------------------------------------------------
+
 volumes:
   postgres-data:
   ollama-data:
+  # qdrant-data:   # uncomment along with the `qdrant` service above

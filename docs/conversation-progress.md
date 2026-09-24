@@ -137,6 +137,19 @@ Stage 4 (Part II): add a free-tier cloud LLM provider (Groq/OpenRouter/Gemini)
 as a swappable alternative to local Ollama, behind a shared provider
 abstraction, with no change to existing default (Ollama) behavior.
 
+## Tech stack reference doc added
+
+- New `docs/tech-stack.md`: a cross-cutting, capability-by-capability
+  reference (LLM inference, embeddings, vector storage, tool calling,
+  guardrails, evaluation) listing what's active, what swappable alternative
+  is wired in or planned, and free options worth exploring. Update it
+  alongside every stage that introduces a new technology choice.
+- `docker-compose.yml`: added a commented-out `qdrant` service (and matching
+  `qdrant-data` volume) as the first alternative-vector-store toggle — the
+  default remains `pgvector` on the existing `db` service. Uncomment +
+  `VECTOR_STORE=qdrant` to try it; comment out to revert, per
+  `docs/tech-stack.md`.
+
 ## Developer note
 
 Update this file at the end of each stage with implementation decisions,
