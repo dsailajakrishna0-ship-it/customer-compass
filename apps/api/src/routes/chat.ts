@@ -1,9 +1,8 @@
 import { Router } from "express";
 import { buildContext, retrieveRelevantChunks } from "../rag/retrieve.js";
+import { generate, DEFAULT_LLM_PROVIDER, type ChatMessage, type LlmProvider } from "../llm/provider.js";
 
 export const chatRouter = Router();
-
-type ChatMessage = { role: "user" | "assistant"; content: string };
 
 const generalSystemPrompt = `You are Compass, a helpful assistant inside a CRM learning application.
 You do not have access to any CRM customer data yet. Be transparent about that.
@@ -13,9 +12,6 @@ const groundedSystemPrompt = `You are Compass, a CRM knowledge assistant.
 Answer ONLY using the numbered sources provided in the context below.
 Every factual claim must be followed by a citation like [1] matching a source number.
 If the sources do not contain the answer, say so plainly instead of guessing.`;
-
-const ollamaUrl = process.env.OLLAMA_URL ?? "http://localhost:11435";
-const ollamaModel = process.env.OLLAMA_MODEL ?? "qwen2.5:3b";
 
 function validateMessages(messages: unknown): messages is ChatMessage[] {
   return (
@@ -32,46 +28,35 @@ function validateMessages(messages: unknown): messages is ChatMessage[] {
   );
 }
 
-async function callOllama(systemPrompt: string, messages: ChatMessage[]): Promise<string> {
-  const ollamaResponse = await fetch(`${ollamaUrl}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: ollamaModel,
-      stream: false,
-      messages: [{ role: "system", content: systemPrompt }, ...messages],
-      options: { temperature: 0.3, num_predict: 350 },
-    }),
-  });
-  if (!ollamaResponse.ok) {
-    console.error("Ollama request failed", await ollamaResponse.text());
-    throw new Error("The local model is not ready. Start Ollama and pull the configured model.");
-  }
-  const payload = (await ollamaResponse.json()) as { message?: { content?: string } };
-  return payload.message?.content ?? "I could not generate a response.";
+/** Optional per-request LLM choice from the UI selector; falls back to LLM_PROVIDER when omitted. */
+function resolveProvider(provider: unknown): LlmProvider | undefined {
+  if (provider === "ollama" || provider === "cloud") return provider;
+  return undefined;
 }
 
 /** General-purpose chat, no CRM/document grounding (Stage 2 behavior). */
 chatRouter.post("/", async (request, response) => {
-  const { messages } = request.body ?? {};
+  const { messages, provider } = request.body ?? {};
   if (!validateMessages(messages)) {
     return response.status(400).json({ error: "Send between 1 and 12 chat messages." });
   }
+  const resolvedProvider = resolveProvider(provider) ?? DEFAULT_LLM_PROVIDER;
   try {
-    const message = await callOllama(generalSystemPrompt, messages);
-    return response.json({ message });
+    const message = await generate(generalSystemPrompt, messages, resolvedProvider);
+    return response.json({ message, provider: resolvedProvider });
   } catch (error) {
-    console.error("Could not reach Ollama", error);
-    return response.status(503).json({ error: error instanceof Error ? error.message : "Could not reach Ollama." });
+    console.error(`Could not reach the "${resolvedProvider}" LLM provider`, error);
+    return response.status(503).json({ error: error instanceof Error ? error.message : "Could not reach the configured LLM provider." });
   }
 });
 
 /** Retrieval-augmented chat: retrieves cited chunks and grounds the answer in them. */
 chatRouter.post("/rag", async (request, response) => {
-  const { messages } = request.body ?? {};
+  const { messages, provider } = request.body ?? {};
   if (!validateMessages(messages)) {
     return response.status(400).json({ error: "Send between 1 and 12 chat messages." });
   }
+  const resolvedProvider = resolveProvider(provider) ?? DEFAULT_LLM_PROVIDER;
 
   const question = messages[messages.length - 1].content;
 
@@ -81,6 +66,7 @@ chatRouter.post("/rag", async (request, response) => {
       return response.json({
         message: "I could not find any ingested documents relevant to that question.",
         citations: [],
+        provider: resolvedProvider,
       });
     }
 
@@ -90,7 +76,7 @@ chatRouter.post("/rag", async (request, response) => {
       { role: "user", content: `Context:\n${context}\n\nQuestion: ${question}` },
     ];
 
-    const message = await callOllama(groundedSystemPrompt, augmentedMessages);
+    const message = await generate(groundedSystemPrompt, augmentedMessages, resolvedProvider);
     const citations = chunks.map((chunk, i) => ({
       number: i + 1,
       documentId: chunk.documentId,
@@ -101,9 +87,9 @@ chatRouter.post("/rag", async (request, response) => {
       similarity: chunk.similarity,
       snippet: chunk.content.slice(0, 200),
     }));
-    return response.json({ message, citations });
+    return response.json({ message, citations, provider: resolvedProvider });
   } catch (error) {
-    console.error("Grounded chat failed", error);
+    console.error(`Grounded chat failed with the "${resolvedProvider}" LLM provider`, error);
     return response.status(503).json({ error: error instanceof Error ? error.message : "Could not answer with retrieval." });
   }
 });

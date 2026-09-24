@@ -5,7 +5,8 @@ import "./styles.css";
 type Company = { id: number; name: string; industry: string; relationship_status: string; deal_count: number; interaction_count: number };
 type Detail = Company & { website: string | null; contacts: { id: number; full_name: string; job_title: string | null; email: string }[]; deals: { id: number; name: string; amount: string; status: string; expected_close_date: string | null }[]; interactions: { id: number; interaction_type: string; subject: string; occurred_at: string; summary: string }[] };
 type Citation = { number: number; documentId: number; title: string; sourcePath: string; docType: string; companyName: string | null; similarity: number; snippet: string };
-type ChatMessage = { role: "user" | "assistant"; content: string; citations?: Citation[] };
+type ChatMessage = { role: "user" | "assistant"; content: string; citations?: Citation[]; provider?: LlmProvider };
+type LlmProvider = "ollama" | "cloud";
 
 const api = "http://localhost:3001";
 
@@ -17,6 +18,7 @@ function App() {
   const [question, setQuestion] = useState("");
   const [isAsking, setIsAsking] = useState(false);
   const [useRag, setUseRag] = useState(false);
+  const [provider, setProvider] = useState<LlmProvider>("ollama");
   const [ingestStatus, setIngestStatus] = useState<string | null>(null);
   const [isIngesting, setIsIngesting] = useState(false);
 
@@ -47,9 +49,9 @@ function App() {
     setMessages(history); setQuestion(""); setIsAsking(true);
     try {
       const endpoint = useRag ? "/api/chat/rag" : "/api/chat";
-      const response = await fetch(`${api}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: history.slice(-12) }) });
-      const body = await response.json() as { message?: string; error?: string; citations?: Citation[] };
-      setMessages(current => [...current, { role: "assistant", content: body.message ?? body.error ?? "Something went wrong.", citations: body.citations }]);
+      const response = await fetch(`${api}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: history.slice(-12), provider }) });
+      const body = await response.json() as { message?: string; error?: string; citations?: Citation[]; provider?: LlmProvider };
+      setMessages(current => [...current, { role: "assistant", content: body.message ?? body.error ?? "Something went wrong.", citations: body.citations, provider: body.provider }]);
     } catch { setMessages(current => [...current, { role: "assistant", content: "I could not reach the API. Check that the local services are running." }]); }
     finally { setIsAsking(false); }
   }
@@ -69,6 +71,13 @@ function App() {
         <div className="rag-controls">
           <button type="button" onClick={() => void ingestDocuments()} disabled={isIngesting}>{isIngesting ? "Ingesting…" : "Ingest documents"}</button>
           <label><input type="checkbox" checked={useRag} onChange={event => setUseRag(event.target.checked)} /> Use document knowledge (RAG)</label>
+          <label className="provider-select">
+            Model:
+            <select value={provider} onChange={event => setProvider(event.target.value as LlmProvider)}>
+              <option value="ollama">Local (Ollama · qwen2.5:3b)</option>
+              <option value="cloud">Cloud (OpenRouter, free tier)</option>
+            </select>
+          </label>
         </div>
         {ingestStatus && <p className="ingest-status">{ingestStatus}</p>}
       </div>
@@ -76,6 +85,9 @@ function App() {
         {messages.map((message, index) => (
           <div className={`message ${message.role}`} key={index}>
             <p>{message.content}</p>
+            {message.role === "assistant" && message.provider && (
+              <p className="provider-tag">via {message.provider === "cloud" ? "Cloud (OpenRouter)" : "Local (Ollama)"}</p>
+            )}
             {message.citations && message.citations.length > 0 && (
               <ol className="citations">
                 {message.citations.map(citation => (

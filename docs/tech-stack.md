@@ -24,18 +24,27 @@ this project's standing strategy). Two mechanisms are used:
    definition exists in `docker-compose.yml` but is commented out by default.
    Uncomment it, set the matching environment variable, and restart to try it;
    comment it back out to return to the default with no other changes.
+3. **Live UI selector, per request** (LLM provider only, so far) — the web
+   app lets the user pick the provider from a dropdown on every message, no
+   restart needed. The server still supports an env-var default
+   (`LLM_PROVIDER`) for clients that don't specify one (e.g. curl/tests).
 
 ## LLM inference (chat/completion)
 
 | | Technology | Status |
 | --- | --- | --- |
 | **Active (default)** | Ollama, local, `qwen2.5:3b` | Stage 2 |
-| **Swappable alternative** | Free-tier cloud provider (Groq / OpenRouter / Gemini), via `LLM_PROVIDER=cloud` | Stage 4 (planned) |
+| **Swappable alternative** | OpenRouter (cloud, free tier), selectable live per request via the web UI's "Model" dropdown, or `provider: "cloud"` in the request body, or `LLM_PROVIDER=cloud` as the server-side default | Stage 4 |
+
+Current OpenRouter free model in use: `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`.
+OpenRouter's free-tier model roster changes frequently (models get promoted to
+paid-only or become rate-limited under shared-pool contention) — see
+`apps/api/.env.example` for a one-liner to refresh the live free-model list
+and swap in a working slug if cloud requests start failing.
 
 Free options worth exploring later:
 
 - **Groq** — very low latency, OpenAI-compatible API, generous free tier.
-- **OpenRouter** — aggregates many free-tier models behind one API.
 - **Google Gemini (free tier)** — strong quality, own SDK shape.
 - **Together.ai** — free credits, OpenAI-compatible.
 
