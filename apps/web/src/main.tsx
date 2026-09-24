@@ -62,9 +62,9 @@ function App() {
     setMessages(history); setQuestion(""); setIsAsking(true);
     try {
       const endpoint = useRag ? "/api/chat/rag" : "/api/chat";
-      const body: { messages: ChatMessage[]; provider: LlmProvider; model?: string } = { messages: history.slice(-12), provider };
-      if (provider === "cloud" && cloudModel) body.model = cloudModel;
-      const response = await fetch(`${api}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const requestBody: { messages: ChatMessage[]; provider: LlmProvider; model?: string } = { messages: history.slice(-12), provider };
+      if (provider === "cloud" && cloudModel) requestBody.model = cloudModel;
+      const response = await fetch(`${api}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) });
       const body = await response.json() as { message?: string; error?: string; citations?: Citation[]; provider?: LlmProvider };
       setMessages(current => [...current, { role: "assistant", content: body.message ?? body.error ?? "Something went wrong.", citations: body.citations, provider: body.provider }]);
     } catch { setMessages(current => [...current, { role: "assistant", content: "I could not reach the API. Check that the local services are running." }]); }
