@@ -27,6 +27,22 @@ function App() {
   const [ingestStatus, setIngestStatus] = useState<string | null>(null);
   const [isIngesting, setIsIngesting] = useState(false);
 
+  function toggleRag(nextUseRag: boolean) {
+    // RAG and plain chat use different system prompts and have fundamentally
+    // different context (grounded-in-documents vs. general knowledge).
+    // Carrying old messages across a mode switch let a later plain-chat
+    // question "inherit" an earlier RAG answer's framing (e.g. "none of the
+    // four sources mention X"), producing confusing answers. Starting a
+    // fresh conversation on toggle keeps each mode's history self-consistent.
+    setUseRag(nextUseRag);
+    setMessages([{
+      role: "assistant",
+      content: nextUseRag
+        ? "Switched to document-grounded mode. Ask about ingested CRM documents and I'll cite my sources."
+        : "Switched to general chat mode. I do not have access to CRM data here — starting a fresh conversation.",
+    }]);
+  }
+
   useEffect(() => { void loadCompanies(); }, []);
   useEffect(() => { void loadCloudModels(); }, []);
   async function loadCloudModels() {
@@ -85,7 +101,7 @@ function App() {
         <p>Toggle document knowledge to get grounded, cited answers from ingested CRM documents.</p>
         <div className="rag-controls">
           <button type="button" onClick={() => void ingestDocuments()} disabled={isIngesting}>{isIngesting ? "Ingesting…" : "Ingest documents"}</button>
-          <label><input type="checkbox" checked={useRag} onChange={event => setUseRag(event.target.checked)} /> Use document knowledge (RAG)</label>
+          <label><input type="checkbox" checked={useRag} onChange={event => toggleRag(event.target.checked)} /> Use document knowledge (RAG)</label>
           <label className="provider-select">
             Model:
             <select value={provider} onChange={event => setProvider(event.target.value as LlmProvider)}>
