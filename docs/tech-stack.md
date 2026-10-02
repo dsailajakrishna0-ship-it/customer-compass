@@ -72,9 +72,15 @@ information, organized the other way (by technology, not by stage).
   plus a couple of paid examples (greyed out, reference only). Backed by
   `GET /api/llm/models`.
 
-![Stage 5](https://img.shields.io/badge/Stage_5-Realistic_CRM_RAG-lightgrey) **— planned**
-- No new technology choice recorded yet; see
-  `docs/part-2-grounded-intelligence/05-realistic-crm-rag.md`.
+![Stage 5](https://img.shields.io/badge/Stage_5-Realistic_CRM_RAG-d4a017) **— done**
+- **No new infra** — builds on the existing PostgreSQL tables and the Stage 3
+  `pgvector` retrieval. Adds a deterministic, keyword-based query router
+  (`apps/api/src/chat/router.ts`) that decides whether a question needs
+  structured SQL facts (`apps/api/src/crm/queries.ts`), document retrieval
+  (extended `retrieve.ts`, now customer-scoped by `company_id`), or both.
+  New additive `POST /api/chat/crm` endpoint and a three-way "Chat mode"
+  selector in the UI (General / RAG / CRM copilot) that visibly separates
+  verified database facts from cited document claims.
 
 ![Stage 6](https://img.shields.io/badge/Stage_6-Retrieval_Evaluation-lightgrey) **— planned**
 - Custom benchmark (`evals/questions.json`) + LLM-as-judge. Alternatives to

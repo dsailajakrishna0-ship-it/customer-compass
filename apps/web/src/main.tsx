@@ -5,8 +5,11 @@ import "./styles.css";
 type Company = { id: number; name: string; industry: string; relationship_status: string; deal_count: number; interaction_count: number };
 type Detail = Company & { website: string | null; contacts: { id: number; full_name: string; job_title: string | null; email: string }[]; deals: { id: number; name: string; amount: string; status: string; expected_close_date: string | null }[]; interactions: { id: number; interaction_type: string; subject: string; occurred_at: string; summary: string }[] };
 type Citation = { number: number; documentId: number; title: string; sourcePath: string; docType: string; companyName: string | null; similarity: number; snippet: string };
-type ChatMessage = { role: "user" | "assistant"; content: string; citations?: Citation[]; provider?: LlmProvider };
+type CrmFact = { id: number; name: string; industry: string; relationshipStatus: string; openDeals: { id: number; name: string; amount: string; status: string; expectedCloseDate: string | null }[]; wonDealsCount: number; lostDealsCount: number };
+type ChatMessage = { role: "user" | "assistant"; content: string; citations?: Citation[]; facts?: CrmFact | null; scopedCompany?: string | null; provider?: LlmProvider };
 type LlmProvider = "ollama" | "cloud";
+/** "general" = Stage 2 plain chat, "rag" = Stage 3 document-grounded chat, "crm" = Stage 5 facts + citations. */
+type ChatMode = "general" | "rag" | "crm";
 
 type ModelOption = { id: string; name: string };
 type ModelCatalog = { free: ModelOption[]; paid: ModelOption[] };
@@ -20,27 +23,41 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([{ role: "assistant", content: "Hello — I’m Compass. At this stage I can chat, but I do not yet have access to CRM data." }]);
   const [question, setQuestion] = useState("");
   const [isAsking, setIsAsking] = useState(false);
-  const [useRag, setUseRag] = useState(false);
+  const [chatMode, setChatMode] = useState<ChatMode>("general");
   const [provider, setProvider] = useState<LlmProvider>("ollama");
   const [cloudModels, setCloudModels] = useState<ModelCatalog>({ free: [], paid: [] });
   const [cloudModel, setCloudModel] = useState<string>("");
   const [ingestStatus, setIngestStatus] = useState<string | null>(null);
   const [isIngesting, setIsIngesting] = useState(false);
 
-  function toggleRag(nextUseRag: boolean) {
-    // RAG and plain chat use different system prompts and have fundamentally
-    // different context (grounded-in-documents vs. general knowledge).
-    // Carrying old messages across a mode switch let a later plain-chat
-    // question "inherit" an earlier RAG answer's framing (e.g. "none of the
+  const modeCopy: Record<ChatMode, { label: string; placeholder: string; switchNotice: string }> = {
+    general: {
+      label: "General chat",
+      placeholder: "Ask a general question…",
+      switchNotice: "Switched to general chat mode. I do not have access to CRM data here — starting a fresh conversation.",
+    },
+    rag: {
+      label: "Document knowledge (RAG)",
+      placeholder: "Ask about ingested CRM documents…",
+      switchNotice: "Switched to document-grounded mode. Ask about ingested CRM documents and I'll cite my sources.",
+    },
+    crm: {
+      label: "CRM copilot (facts + documents)",
+      placeholder: "Ask about deals, pipeline, or customer conversations…",
+      switchNotice: "Switched to CRM copilot mode. I can pull verified facts from the database and cite ingested documents, clearly separated.",
+    },
+  };
+
+  function switchChatMode(nextMode: ChatMode) {
+    // Each mode has a different system prompt and a fundamentally different
+    // context shape (grounded-in-documents vs. general knowledge vs.
+    // facts+citations). Carrying old messages across a mode switch lets a
+    // later request "inherit" a previous mode's framing (e.g. "none of the
     // four sources mention X"), producing confusing answers. Starting a
-    // fresh conversation on toggle keeps each mode's history self-consistent.
-    setUseRag(nextUseRag);
-    setMessages([{
-      role: "assistant",
-      content: nextUseRag
-        ? "Switched to document-grounded mode. Ask about ingested CRM documents and I'll cite my sources."
-        : "Switched to general chat mode. I do not have access to CRM data here — starting a fresh conversation.",
-    }]);
+    // fresh conversation on every mode switch keeps each mode's history
+    // self-consistent.
+    setChatMode(nextMode);
+    setMessages([{ role: "assistant", content: modeCopy[nextMode].switchNotice }]);
   }
 
   useEffect(() => { void loadCompanies(); }, []);
@@ -77,12 +94,12 @@ function App() {
     const history = [...messages, { role: "user" as const, content: text }];
     setMessages(history); setQuestion(""); setIsAsking(true);
     try {
-      const endpoint = useRag ? "/api/chat/rag" : "/api/chat";
+      const endpoint = chatMode === "crm" ? "/api/chat/crm" : chatMode === "rag" ? "/api/chat/rag" : "/api/chat";
       const requestBody: { messages: ChatMessage[]; provider: LlmProvider; model?: string } = { messages: history.slice(-12), provider };
       if (provider === "cloud" && cloudModel) requestBody.model = cloudModel;
       const response = await fetch(`${api}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) });
-      const body = await response.json() as { message?: string; error?: string; citations?: Citation[]; provider?: LlmProvider };
-      setMessages(current => [...current, { role: "assistant", content: body.message ?? body.error ?? "Something went wrong.", citations: body.citations, provider: body.provider }]);
+      const body = await response.json() as { message?: string; error?: string; citations?: Citation[]; facts?: CrmFact | null; scopedCompany?: string | null; provider?: LlmProvider };
+      setMessages(current => [...current, { role: "assistant", content: body.message ?? body.error ?? "Something went wrong.", citations: body.citations, facts: body.facts, scopedCompany: body.scopedCompany, provider: body.provider }]);
     } catch { setMessages(current => [...current, { role: "assistant", content: "I could not reach the API. Check that the local services are running." }]); }
     finally { setIsAsking(false); }
   }
@@ -96,12 +113,19 @@ function App() {
     </section>
     <section className="chat-panel">
       <div>
-        <p className="eyebrow">Stage 3 · Basic RAG</p>
+        <p className="eyebrow">Stage 5 · Realistic CRM RAG</p>
         <h2>Ask Compass</h2>
-        <p>Toggle document knowledge to get grounded, cited answers from ingested CRM documents.</p>
+        <p>Choose a chat mode: general knowledge, document-grounded answers, or the CRM copilot that combines verified database facts with cited documents.</p>
         <div className="rag-controls">
           <button type="button" onClick={() => void ingestDocuments()} disabled={isIngesting}>{isIngesting ? "Ingesting…" : "Ingest documents"}</button>
-          <label><input type="checkbox" checked={useRag} onChange={event => toggleRag(event.target.checked)} /> Use document knowledge (RAG)</label>
+          <label className="provider-select">
+            Chat mode:
+            <select value={chatMode} onChange={event => switchChatMode(event.target.value as ChatMode)}>
+              <option value="general">{modeCopy.general.label}</option>
+              <option value="rag">{modeCopy.rag.label}</option>
+              <option value="crm">{modeCopy.crm.label}</option>
+            </select>
+          </label>
           <label className="provider-select">
             Model:
             <select value={provider} onChange={event => setProvider(event.target.value as LlmProvider)}>
@@ -134,6 +158,21 @@ function App() {
             {message.role === "assistant" && message.provider && (
               <p className="provider-tag">via {message.provider === "cloud" ? "Cloud (OpenRouter)" : "Local (Ollama)"}</p>
             )}
+            {message.scopedCompany && <p className="provider-tag">Scoped to: {message.scopedCompany}</p>}
+            {message.facts && (
+              <div className="crm-facts">
+                <strong>Facts (from CRM database)</strong>
+                <p>{message.facts.name} — {message.facts.industry} · {message.facts.relationshipStatus}</p>
+                {message.facts.openDeals.length > 0 ? (
+                  <ul>
+                    {message.facts.openDeals.map(deal => (
+                      <li key={deal.id}>{deal.name} · ${Number(deal.amount).toLocaleString()} · expected {deal.expectedCloseDate ?? "not set"}</li>
+                    ))}
+                  </ul>
+                ) : <p>No open deals.</p>}
+                <small>{message.facts.wonDealsCount} won · {message.facts.lostDealsCount} lost</small>
+              </div>
+            )}
             {message.citations && message.citations.length > 0 && (
               <ol className="citations">
                 {message.citations.map(citation => (
@@ -146,7 +185,7 @@ function App() {
           </div>
         ))}
       </div>
-      <form onSubmit={askQuestion}><input value={question} onChange={event => setQuestion(event.target.value)} placeholder={useRag ? "Ask about ingested CRM documents…" : "Ask a general question…"} aria-label="Chat question" /><button disabled={isAsking}>{isAsking ? "Thinking…" : "Send"}</button></form>
+      <form onSubmit={askQuestion}><input value={question} onChange={event => setQuestion(event.target.value)} placeholder={modeCopy[chatMode].placeholder} aria-label="Chat question" /><button disabled={isAsking}>{isAsking ? "Thinking…" : "Send"}</button></form>
     </section>
   </main>;
 }
