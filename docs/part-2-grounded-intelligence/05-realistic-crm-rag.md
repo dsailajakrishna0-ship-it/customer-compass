@@ -1,7 +1,7 @@
 # Stage 5 — Realistic CRM RAG
 
 **Part:** II — Grounded Intelligence
-**Status:** Planned
+**Status:** Implemented
 
 ## Goal
 
@@ -78,3 +78,56 @@ Expected files/modules for this increment:
 
 The Stage 2 general chat endpoint will be extended rather than replaced so the
 development history remains easy to follow.
+
+## Actual implementation
+
+No new migration or table was needed — `documents.company_id` already existed
+from Stage 3 ingestion, so customer-scoping could build directly on it.
+
+- `apps/api/src/crm/queries.ts` — `listCompanies()`, `getOpenDeals(companyId)`,
+  `getCompanySummary(companyId)` (industry, relationship status, open deals,
+  won/lost counts). Plain parameterized SQL, no embeddings or LLM calls.
+- `apps/api/src/chat/router.ts` — `classifyQuery(question)`, a deterministic
+  keyword-based classifier (not an LLM call, by design, so routing stays fast
+  and observable): structured keywords (deal, pipeline, amount, status of,
+  close date, revenue, won, lost, …) set `wantsStructured`; discussion
+  keywords (said, mentioned, email, call, note, feedback, …) set `wantsRag`;
+  if neither matches, it falls back to RAG-only, preserving Stage 3 behavior.
+  A company is "detected" when a significant word (>3 chars) from a known
+  company name appears in the question, which also drives customer-scoping.
+- `apps/api/src/rag/retrieve.ts` — `retrieveRelevantChunks()` gained an
+  optional `companyId` parameter; the SQL filters to
+  `company_id = $companyId OR company_id IS NULL`, so a scoped question only
+  ever surfaces that company's own documents plus company-agnostic ones
+  (e.g. product overviews) — never another company's material.
+- `apps/api/src/routes/chat.ts` — new, additive `POST /api/chat/crm` endpoint.
+  It runs `classifyQuery`, conditionally fetches `getCompanySummary` and/or
+  scoped RAG chunks, and builds a prompt with a "Verified CRM facts (already
+  correct, do not cite)" block and a "Source documents" (numbered, `[n]`
+  citation) block. The existing `/` and `/rag` endpoints are untouched.
+- `apps/web/src/main.tsx` — the RAG checkbox became a three-way "Chat mode"
+  dropdown (General / Document knowledge (RAG) / CRM copilot). Switching
+  modes resets the conversation (same pattern as the Stage 4 RAG-toggle
+  fix, generalized). CRM-mode responses render a distinct "Facts (from CRM
+  database)" panel above the usual numbered citations list.
+
+## How to test manually (verified)
+
+All 5 scenarios below were run against `qwen2.5:3b` via `POST /api/chat/crm`:
+
+1. "What deals does Acme Fabrication have in the pipeline?" → facts populated
+   (one open deal, amount, close date), `citations: []`.
+2. "What did Acme Fabrication say about onboarding in their emails?" →
+   `facts: null`, 4 numbered citations, all `[n]`-referenced in the answer.
+3. "What deals does Acme Fabrication have, and what did they say about
+   onboarding emails?" → both facts and citations present, answer clearly
+   separates the deal fact from the cited discussion.
+4. "What did Northstar Logistics say about onboarding in their emails?" →
+   `scopedCompany: "Northstar Logistics"`; all returned citations belong to
+   Northstar or are company-agnostic — none from Acme or Harbor & Pine.
+5. Browser UI: the "Facts (from CRM database)" block renders visibly above
+   the citations list and is only shown for CRM-mode messages that returned
+   facts.
+
+`cd apps/api && npm test` (6/6 passing) and `npx tsc --noEmit` in both
+`apps/api` and `apps/web` confirm no regressions.

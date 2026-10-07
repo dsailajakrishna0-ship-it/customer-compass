@@ -22,7 +22,18 @@ const DEFAULT_TOP_K = 4;
 /** Chunks below this cosine similarity are treated as not relevant enough to cite. */
 const MIN_SIMILARITY = 0.3;
 
-export async function retrieveRelevantChunks(question: string, topK = DEFAULT_TOP_K): Promise<RetrievedChunk[]> {
+/**
+ * Finds the closest document chunks to `question`. When `companyId` is
+ * given (Stage 5 company scoping), only that company's documents and
+ * company-agnostic documents (e.g. product overviews, company_id IS NULL)
+ * are eligible — another customer's material is never retrieved for a
+ * scoped question.
+ */
+export async function retrieveRelevantChunks(
+  question: string,
+  companyId?: number,
+  topK = DEFAULT_TOP_K,
+): Promise<RetrievedChunk[]> {
   const queryEmbedding = toVectorLiteral(await embedText(question));
 
   const result = await pool.query<{
@@ -49,9 +60,10 @@ export async function retrieveRelevantChunks(question: string, topK = DEFAULT_TO
      FROM document_chunks dc
      JOIN documents d ON d.id = dc.document_id
      LEFT JOIN companies c ON c.id = d.company_id
+     WHERE $3::int IS NULL OR d.company_id = $3 OR d.company_id IS NULL
      ORDER BY dc.embedding <=> $1
      LIMIT $2`,
-    [queryEmbedding, topK],
+    [queryEmbedding, topK, companyId ?? null],
   );
 
   return result.rows
