@@ -3,3 +3,4 @@
 .provider-select { gap: 6px; } .provider-select select { border: 1px solid #bdc7d8; border-radius: 6px; font: inherit; padding: 4px 6px; } .provider-tag { font-size: .72rem; color: #7a708f; margin: 4px 0 0; font-style: italic; }
 .crm-facts { margin: 8px 0; padding: 8px 10px; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 8px; font-size: .85rem; } .crm-facts strong { display: block; margin-bottom: 4px; color: #3730a3; } .crm-facts ul { margin: 4px 0; padding-left: 18px; } .crm-facts small { color: #59657a; }
 .provider-select select option.paid-option, .provider-select select option:disabled { color: #a3a3a3; background-color: #eee; }
+.nav-bar { display: flex; gap: 6px; margin-bottom: 22px; } .nav-link { color: #59657a; text-decoration: none; font-weight: 700; padding: 8px 14px; border-radius: 8px; } .nav-link:hover { background: #f1efff; } .nav-link.active { background: #684bd4; color: #fff; }
