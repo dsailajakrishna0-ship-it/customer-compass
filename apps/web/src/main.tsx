@@ -1,20 +1,11 @@
 import { StrictMode, useEffect, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
-
-type Company = { id: number; name: string; industry: string; relationship_status: string; deal_count: number; interaction_count: number };
-type Detail = Company & { website: string | null; contacts: { id: number; full_name: string; job_title: string | null; email: string }[]; deals: { id: number; name: string; amount: string; status: string; expected_close_date: string | null }[]; interactions: { id: number; interaction_type: string; subject: string; occurred_at: string; summary: string }[] };
-type Citation = { number: number; documentId: number; title: string; sourcePath: string; docType: string; companyName: string | null; similarity: number; snippet: string };
-type CrmFact = { id: number; name: string; industry: string; relationshipStatus: string; openDeals: { id: number; name: string; amount: string; status: string; expectedCloseDate: string | null }[]; wonDealsCount: number; lostDealsCount: number };
-type ChatMessage = { role: "user" | "assistant"; content: string; citations?: Citation[]; facts?: CrmFact | null; scopedCompany?: string | null; provider?: LlmProvider };
-type LlmProvider = "ollama" | "cloud";
-/** "general" = Stage 2 plain chat, "rag" = Stage 3 document-grounded chat, "crm" = Stage 5 facts + citations. */
-type ChatMode = "general" | "rag" | "crm";
-
-type ModelOption = { id: string; name: string };
-type ModelCatalog = { free: ModelOption[]; paid: ModelOption[] };
-
-const api = "http://localhost:3001";
+import type { ChatMessage, ChatMode, Detail, LlmProvider, ModelCatalog } from "./types";
+import { getCompany, listCompanies } from "./api/companies";
+import { getCloudModels, sendChat } from "./api/chat";
+import { ingestDocuments as ingestDocumentsRequest } from "./api/documents";
+import type { Company } from "./types";
 
 function App() {
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -64,23 +55,22 @@ function App() {
   useEffect(() => { void loadCloudModels(); }, []);
   async function loadCloudModels() {
     try {
-      const catalog = await (await fetch(`${api}/api/llm/models`)).json() as ModelCatalog;
+      const catalog = await getCloudModels();
       setCloudModels(catalog);
       if (catalog.free.length > 0) setCloudModel(current => current || catalog.free[0].id);
     } catch { /* Cloud model list is optional; the "cloud" provider still works with the server's default model. */ }
   }
   async function loadCompanies() {
-    try { setCompanies(await (await fetch(`${api}/api/companies`)).json()); }
+    try { setCompanies(await listCompanies()); }
     catch { setError("Could not reach the API. Start PostgreSQL and the API, then refresh."); }
   }
   async function selectCompany(id: number) {
-    setSelected(await (await fetch(`${api}/api/companies/${id}`)).json());
+    setSelected(await getCompany(id));
   }
   async function ingestDocuments() {
     setIsIngesting(true); setIngestStatus("Ingesting documents…");
     try {
-      const response = await fetch(`${api}/api/documents/ingest`, { method: "POST" });
-      const body = await response.json() as { documentsProcessed?: number; chunksCreated?: number; status?: string; error?: string };
+      const body = await ingestDocumentsRequest();
       setIngestStatus(body.status === "completed"
         ? `Ingested ${body.documentsProcessed} documents into ${body.chunksCreated} chunks.`
         : `Ingestion failed: ${body.error ?? "unknown error"}`);
@@ -94,11 +84,9 @@ function App() {
     const history = [...messages, { role: "user" as const, content: text }];
     setMessages(history); setQuestion(""); setIsAsking(true);
     try {
-      const endpoint = chatMode === "crm" ? "/api/chat/crm" : chatMode === "rag" ? "/api/chat/rag" : "/api/chat";
       const requestBody: { messages: ChatMessage[]; provider: LlmProvider; model?: string } = { messages: history.slice(-12), provider };
       if (provider === "cloud" && cloudModel) requestBody.model = cloudModel;
-      const response = await fetch(`${api}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) });
-      const body = await response.json() as { message?: string; error?: string; citations?: Citation[]; facts?: CrmFact | null; scopedCompany?: string | null; provider?: LlmProvider };
+      const body = await sendChat(chatMode, requestBody);
       setMessages(current => [...current, { role: "assistant", content: body.message ?? body.error ?? "Something went wrong.", citations: body.citations, facts: body.facts, scopedCompany: body.scopedCompany, provider: body.provider }]);
     } catch { setMessages(current => [...current, { role: "assistant", content: "I could not reach the API. Check that the local services are running." }]); }
     finally { setIsAsking(false); }
