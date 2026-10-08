@@ -8,6 +8,58 @@
 Build a transparent Retrieval-Augmented Generation pipeline using synthetic CRM
 documents. The output must be grounded and cite its source chunks.
 
+## Concepts: embeddings, semantic search, cosine similarity
+
+This stage leans on a few terms that show up throughout the rest of the docs
+(`embedding`, `semantic search`, `cosine similarity`, `vector`) without
+re-explaining them every time. Here's what they mean, in plain language.
+
+**Embedding** — a numerical fingerprint of meaning. An embedding model reads a
+piece of text and outputs a fixed-length list of numbers (a *vector*) — this
+app uses Ollama's `mxbai-embed-large`, which outputs 1024 numbers per chunk.
+Texts with similar *meaning* produce vectors that point in similar
+directions, even if they don't share any of the same words.
+
+```text
+"Can we set alerts per customer?"        -> [0.12, -0.08, 0.44, ... ]  (1024 numbers)
+"Does the plan support per-client alarms?" -> [0.14, -0.07, 0.41, ... ]  (close by)
+"What's the invoice due date?"             -> [-0.51, 0.33, 0.02, ... ]  (far away)
+```
+
+**Semantic search** — searching by *meaning* instead of by matching exact
+keywords. A traditional keyword search for "alerts per customer" would miss a
+document that says "per-client alarms" — no shared words. Semantic search
+finds it anyway, because the two phrases embed to nearby vectors. This is
+what makes RAG retrieval work here: the question and every document chunk are
+embedded into the same vector space, and "relevant" is redefined as "nearby
+in that space."
+
+**Cosine similarity** — the specific way "nearby" is measured. Instead of
+measuring the straight-line distance between two vectors, cosine similarity
+measures the *angle* between them — it asks "do these two vectors point in
+the same direction?", not "are these two points close together?". The result
+is always between -1 (opposite meaning) and 1 (identical meaning); this app
+treats anything below 0.3 as not relevant enough to cite (see
+`MIN_SIMILARITY` in `apps/api/src/rag/retrieve.ts`).
+
+```text
+          ▲
+          │      • question embedding
+          │     ╱
+          │    ╱  θ (small angle → high similarity)
+          │   ╱
+          │  • relevant chunk embedding
+          │
+          │              • unrelated chunk embedding
+          │             (large angle → low similarity)
+          └──────────────────────────────────────────▶
+```
+
+Postgres computes this directly on stored vectors via `pgvector`'s `<=>`
+operator (`1 - (dc.embedding <=> $1) AS similarity` in `retrieve.ts`) — no
+separate vector database is needed; the embeddings live in a normal
+`document_chunks` table column.
+
 ## Implemented design
 
 ```text
