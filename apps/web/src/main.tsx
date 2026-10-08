@@ -1,72 +1,35 @@
-import { StrictMode, useEffect, useState, type FormEvent } from "react";
+import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
-import type { ChatMessage, ChatMode, Detail, LlmProvider, ModelCatalog } from "./types";
-import { getCompany, listCompanies } from "./api/companies";
-import { getCloudModels, sendChat } from "./api/chat";
+import type { ChatMode, Detail } from "./types";
 import { ingestDocuments as ingestDocumentsRequest } from "./api/documents";
-import type { Company } from "./types";
+import { ChatSessionProvider, MODE_COPY, useChatSession } from "./context/ChatSessionContext";
+import { useCompanies } from "./hooks/useCompanies";
+import { useCloudModels } from "./hooks/useCloudModels";
+import { useChat } from "./hooks/useChat";
 
 function App() {
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [selected, setSelected] = useState<Detail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([{ role: "assistant", content: "Hello — I’m Compass. At this stage I can chat, but I do not yet have access to CRM data." }]);
-  const [question, setQuestion] = useState("");
-  const [isAsking, setIsAsking] = useState(false);
-  const [chatMode, setChatMode] = useState<ChatMode>("general");
-  const [provider, setProvider] = useState<LlmProvider>("ollama");
-  const [cloudModels, setCloudModels] = useState<ModelCatalog>({ free: [], paid: [] });
-  const [cloudModel, setCloudModel] = useState<string>("");
+  return (
+    <ChatSessionProvider>
+      <AppShell />
+    </ChatSessionProvider>
+  );
+}
+
+function AppShell() {
+  const { companies, error, selected, selectCompany } = useCompanies();
   const [ingestStatus, setIngestStatus] = useState<string | null>(null);
   const [isIngesting, setIsIngesting] = useState(false);
+  const { chatMode, switchChatMode, provider, setProvider, cloudModel, setCloudModel, messages } = useChatSession();
+  const { cloudModels } = useCloudModels();
+  const { question, setQuestion, isAsking, askQuestion } = useChat();
 
-  const modeCopy: Record<ChatMode, { label: string; placeholder: string; switchNotice: string }> = {
-    general: {
-      label: "General chat",
-      placeholder: "Ask a general question…",
-      switchNotice: "Switched to general chat mode. I do not have access to CRM data here — starting a fresh conversation.",
-    },
-    rag: {
-      label: "Document knowledge (RAG)",
-      placeholder: "Ask about ingested CRM documents…",
-      switchNotice: "Switched to document-grounded mode. Ask about ingested CRM documents and I'll cite my sources.",
-    },
-    crm: {
-      label: "CRM copilot (facts + documents)",
-      placeholder: "Ask about deals, pipeline, or customer conversations…",
-      switchNotice: "Switched to CRM copilot mode. I can pull verified facts from the database and cite ingested documents, clearly separated.",
-    },
-  };
+  // Default to the first free OpenRouter model once the catalog loads, unless
+  // a prior choice was already restored from localStorage.
+  useEffect(() => {
+    if (cloudModels.free.length > 0 && !cloudModel) setCloudModel(cloudModels.free[0].id);
+  }, [cloudModels, cloudModel, setCloudModel]);
 
-  function switchChatMode(nextMode: ChatMode) {
-    // Each mode has a different system prompt and a fundamentally different
-    // context shape (grounded-in-documents vs. general knowledge vs.
-    // facts+citations). Carrying old messages across a mode switch lets a
-    // later request "inherit" a previous mode's framing (e.g. "none of the
-    // four sources mention X"), producing confusing answers. Starting a
-    // fresh conversation on every mode switch keeps each mode's history
-    // self-consistent.
-    setChatMode(nextMode);
-    setMessages([{ role: "assistant", content: modeCopy[nextMode].switchNotice }]);
-  }
-
-  useEffect(() => { void loadCompanies(); }, []);
-  useEffect(() => { void loadCloudModels(); }, []);
-  async function loadCloudModels() {
-    try {
-      const catalog = await getCloudModels();
-      setCloudModels(catalog);
-      if (catalog.free.length > 0) setCloudModel(current => current || catalog.free[0].id);
-    } catch { /* Cloud model list is optional; the "cloud" provider still works with the server's default model. */ }
-  }
-  async function loadCompanies() {
-    try { setCompanies(await listCompanies()); }
-    catch { setError("Could not reach the API. Start PostgreSQL and the API, then refresh."); }
-  }
-  async function selectCompany(id: number) {
-    setSelected(await getCompany(id));
-  }
   async function ingestDocuments() {
     setIsIngesting(true); setIngestStatus("Ingesting documents…");
     try {
@@ -76,20 +39,6 @@ function App() {
         : `Ingestion failed: ${body.error ?? "unknown error"}`);
     } catch { setIngestStatus("Could not reach the API to ingest documents."); }
     finally { setIsIngesting(false); }
-  }
-  async function askQuestion(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const text = question.trim();
-    if (!text || isAsking) return;
-    const history = [...messages, { role: "user" as const, content: text }];
-    setMessages(history); setQuestion(""); setIsAsking(true);
-    try {
-      const requestBody: { messages: ChatMessage[]; provider: LlmProvider; model?: string } = { messages: history.slice(-12), provider };
-      if (provider === "cloud" && cloudModel) requestBody.model = cloudModel;
-      const body = await sendChat(chatMode, requestBody);
-      setMessages(current => [...current, { role: "assistant", content: body.message ?? body.error ?? "Something went wrong.", citations: body.citations, facts: body.facts, scopedCompany: body.scopedCompany, provider: body.provider }]);
-    } catch { setMessages(current => [...current, { role: "assistant", content: "I could not reach the API. Check that the local services are running." }]); }
-    finally { setIsAsking(false); }
   }
 
   return <main>
@@ -109,14 +58,14 @@ function App() {
           <label className="provider-select">
             Chat mode:
             <select value={chatMode} onChange={event => switchChatMode(event.target.value as ChatMode)}>
-              <option value="general">{modeCopy.general.label}</option>
-              <option value="rag">{modeCopy.rag.label}</option>
-              <option value="crm">{modeCopy.crm.label}</option>
+              <option value="general">{MODE_COPY.general.label}</option>
+              <option value="rag">{MODE_COPY.rag.label}</option>
+              <option value="crm">{MODE_COPY.crm.label}</option>
             </select>
           </label>
           <label className="provider-select">
             Model:
-            <select value={provider} onChange={event => setProvider(event.target.value as LlmProvider)}>
+            <select value={provider} onChange={event => setProvider(event.target.value as "ollama" | "cloud")}>
               <option value="ollama">Local (Ollama · qwen2.5:3b)</option>
               <option value="cloud">Cloud (OpenRouter, free tier)</option>
             </select>
@@ -173,7 +122,7 @@ function App() {
           </div>
         ))}
       </div>
-      <form onSubmit={askQuestion}><input value={question} onChange={event => setQuestion(event.target.value)} placeholder={modeCopy[chatMode].placeholder} aria-label="Chat question" /><button disabled={isAsking}>{isAsking ? "Thinking…" : "Send"}</button></form>
+      <form onSubmit={askQuestion}><input value={question} onChange={event => setQuestion(event.target.value)} placeholder={MODE_COPY[chatMode].placeholder} aria-label="Chat question" /><button disabled={isAsking}>{isAsking ? "Thinking…" : "Send"}</button></form>
     </section>
   </main>;
 }
